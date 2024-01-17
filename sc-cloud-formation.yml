@@ -1,0 +1,497 @@
+AWSTemplateFormatVersion: '2010-09-09'
+
+Parameters:
+  WhitelistedIPAddress:
+    Type: String
+    Description: "Whitelisted IP address for web server access"
+
+Resources:
+  VPC:
+    Type: "AWS::EC2::VPC"
+    Properties:
+      CidrBlock: "192.168.4.0/24"
+      EnableDnsSupport: "true"
+      EnableDnsHostnames: "true"
+      InstanceTenancy: "default"
+      Tags:
+        - Key: Name
+          Value:
+            Ref: "AWS::StackName"
+
+  SCPublicSubnet1:
+    Type: "AWS::EC2::Subnet"
+    Properties:
+      VpcId:
+        Ref: VPC
+      CidrBlock: "192.168.4.0/26"
+      MapPublicIpOnLaunch: true
+      AvailabilityZone: "us-east-1a"
+      Tags:
+        - Key: Name
+          Value: "SCPublicSubnet1"
+
+  SCPublicSubnet2:
+    Type: "AWS::EC2::Subnet"
+    Properties:
+      VpcId:
+        Ref: VPC
+      CidrBlock: "192.168.4.64/26"
+      MapPublicIpOnLaunch: true
+      AvailabilityZone: "us-east-1b"
+      Tags:
+        - Key: Name
+          Value: "SCPublicSubnet2"
+
+  SCPrivateSubnet1:
+    Type: "AWS::EC2::Subnet"
+    Properties:
+      VpcId:
+        Ref: VPC
+      CidrBlock: "192.168.4.128/26"
+      MapPublicIpOnLaunch: false
+      AvailabilityZone: "us-east-1a"
+      Tags:
+        - Key: Name
+          Value: "SCPrivateSubnet1"
+
+  SCPrivateSubnet2:
+    Type: "AWS::EC2::Subnet"
+    Properties:
+      VpcId:
+        Ref: VPC
+      CidrBlock: "192.168.4.192/26"
+      MapPublicIpOnLaunch: false
+      AvailabilityZone: "us-east-1b"
+      Tags:
+        - Key: Name
+          Value: "SCPrivateSubnet2"
+
+  SCInternetGateway:
+    Type: "AWS::EC2::InternetGateway"
+    Properties:
+      Tags:
+        - Key: Name
+          Value: "SCInternetGateway"
+
+  SCAttachGateway:
+    Type: "AWS::EC2::VPCGatewayAttachment"
+    Properties:
+      VpcId:
+        Ref: VPC
+      InternetGatewayId:
+        Ref: SCInternetGateway
+
+  SCRouteTablePublic1:
+    Type: "AWS::EC2::RouteTable"
+    Properties:
+      VpcId:
+        Ref: VPC
+      Tags:
+        - Key: Name
+          Value: "SCRouteTablePublic1"
+
+  SCRouteTablePublic2:
+    Type: "AWS::EC2::RouteTable"
+    Properties:
+      VpcId:
+        Ref: VPC
+      Tags:
+        - Key: Name
+          Value: "SCRouteTablePublic2"
+
+  SCRouteTablePrivate1:
+    Type: "AWS::EC2::RouteTable"
+    Properties:
+      VpcId:
+        Ref: VPC
+      Tags:
+        - Key: Name
+          Value: "SCRouteTablePrivate1"
+
+  SCRouteTablePrivate2:
+    Type: "AWS::EC2::RouteTable"
+    Properties:
+      VpcId:
+        Ref: VPC
+      Tags:
+        - Key: Name
+          Value: "SCRouteTablePrivate2"
+
+  SCRoutePublic1:
+    DependsOn:
+      - SCInternetGateway
+    Type: "AWS::EC2::Route"
+    DependsOn: SCAttachGateway
+    Properties:
+      RouteTableId:
+        Ref: SCRouteTablePublic1
+      DestinationCidrBlock: "0.0.0.0/0"
+      GatewayId:
+        Ref: SCInternetGateway
+
+  SCRoutePublic2:
+    Type: "AWS::EC2::Route"
+    DependsOn: SCAttachGateway
+    Properties:
+      RouteTableId:
+        Ref: SCRouteTablePublic2
+      DestinationCidrBlock: "0.0.0.0/0"
+      GatewayId:
+        Ref: SCInternetGateway
+    
+  RouteAssociationSCPublicSubnet1:
+    Type: "AWS::EC2::SubnetRouteTableAssociation"
+    Properties:
+      SubnetId:
+        Ref: SCPublicSubnet1
+      RouteTableId:
+        Ref: SCRouteTablePublic1
+
+  RouteAssociationSCPublicSubnet2:
+    Type: "AWS::EC2::SubnetRouteTableAssociation"
+    Properties:
+      SubnetId:
+        Ref: SCPublicSubnet2
+      RouteTableId:
+        Ref: SCRouteTablePublic2
+
+  RouteAssociationSCPrivateSubnet1:
+    Type: "AWS::EC2::SubnetRouteTableAssociation"
+    Properties:
+      SubnetId:
+        Ref: SCPrivateSubnet1
+      RouteTableId:
+        Ref: SCRouteTablePrivate1
+
+  RouteAssociationSCPrivateSubnet2:
+    Type: "AWS::EC2::SubnetRouteTableAssociation"
+    Properties:
+      SubnetId:
+        Ref: SCPrivateSubnet2
+      RouteTableId:
+        Ref: SCRouteTablePrivate2
+
+  SCNACLPublic:
+    Type: "AWS::EC2::NetworkAcl"
+    Properties:
+      VpcId:
+        Ref: VPC
+      Tags:
+        - Key: Name
+          Value: "SCNACLPublic"
+
+  SCNACLPrivate:
+    Type: "AWS::EC2::NetworkAcl"
+    Properties:
+      VpcId:
+        Ref: VPC
+      Tags:
+        - Key: Name
+          Value: "SCNACLPrivate"
+
+  SCNACLIngressRulePublic:
+    Type: "AWS::EC2::NetworkAclEntry"
+    Properties:
+      NetworkAclId:
+        Ref: SCNACLPublic
+      RuleNumber: 100
+      Protocol: 6
+      PortRange:
+        From: 80
+        To: 80
+      Egress: false
+      RuleAction: "allow"
+      CidrBlock:
+        Ref: WhitelistedIPAddress
+
+  SCNACLEgressRulePublic:
+    Type: "AWS::EC2::NetworkAclEntry"
+    Properties:
+      NetworkAclId:
+        Ref: SCNACLPublic
+      RuleNumber: 200
+      Protocol: -1
+      Egress: true
+      RuleAction: "deny"
+      CidrBlock: "0.0.0.0/0"
+  
+  SCNACLPublicAssociation:
+    Type: AWS::EC2::SubnetNetworkAclAssociation
+    Properties:
+      SubnetId:
+        Ref: SCPublicSubnet1
+        Ref: SCPublicSubnet2
+      NetworkAclId:
+        Ref: SCNACLPublic
+
+  SCNACLIngressRulePrivate80:
+    Type: "AWS::EC2::NetworkAclEntry"
+    Properties:
+      NetworkAclId:
+        Ref: SCNACLPrivate
+      RuleNumber: 100
+      Protocol: 6
+      PortRange:
+        From: 80
+        To: 80
+      Egress: false
+      RuleAction: "allow"
+      CidrBlock: "192.168.4.0/24"
+
+  SCNACLIngressRulePrivate22:
+    Type: "AWS::EC2::NetworkAclEntry"
+    Properties:
+      NetworkAclId:
+        Ref: SCNACLPrivate
+      RuleNumber: 101
+      Protocol: 6
+      PortRange:
+        From: 22
+        To: 22
+      Egress: false
+      RuleAction: "allow"
+      CidrBlock: "192.168.4.0/24"
+
+  SCNACLEgressRulePrivate:
+    Type: "AWS::EC2::NetworkAclEntry"
+    Properties:
+      NetworkAclId: 
+        Ref: SCNACLPrivate
+      RuleNumber: 200
+      Protocol: -1
+      Egress: true
+      RuleAction: "deny"
+      CidrBlock: "0.0.0.0/0"
+  
+  SCNACLPublicAssociation:
+    Type: AWS::EC2::SubnetNetworkAclAssociation
+    Properties:
+      SubnetId:
+        Ref: SCPrivateSubnet1
+        Ref: SCPrivateSubnet2
+      NetworkAclId:
+        Ref: SCNACLPrivate
+      
+  
+  SCNATGateway:
+    Type: "AWS::EC2::NatGateway"
+    Properties:
+      AllocationId: !GetAtt NATGatewayEIP.AllocationId
+      SubnetId:
+        Ref: "SCPublicSubnet1"
+
+
+  NATGatewayEIP:
+   Type: AWS::EC2::EIP
+   Properties:
+      Domain: vpc
+
+  SCRoutePrivate1:
+    Type: "AWS::EC2::Route"
+    DependsOn: SCNATGateway
+    Properties:
+      RouteTableId: 
+        Ref: SCRouteTablePrivate1
+      DestinationCidrBlock: "0.0.0.0/0"
+      NatGatewayId:
+        Ref: SCNATGateway
+
+  SCRoutePrivate2:
+    Type: "AWS::EC2::Route"
+    DependsOn: SCNATGateway
+    Properties:
+      RouteTableId: 
+        Ref: SCRouteTablePrivate2
+      DestinationCidrBlock: "0.0.0.0/0"
+      NatGatewayId:
+        Ref: SCNATGateway
+
+# SG for EC2 instance
+
+  SCPrivateSecurityGroup:
+    Type: "AWS::EC2::SecurityGroup"
+    Properties:
+      GroupName: "SCPrivateSecurityGroupEC2"
+      GroupDescription: "SCPrivateSecurityGroup"
+      VpcId: 
+        Ref: VPC
+      SecurityGroupIngress:
+        - IpProtocol: "tcp"
+          FromPort: 22
+          ToPort: 22
+          SourceSecurityGroupId: 
+            Ref: SCALBSecurityGroup
+        - IpProtocol: "tcp"
+          FromPort: 80
+          ToPort: 80
+          SourceSecurityGroupId:
+            Ref: SCALBSecurityGroup
+      SecurityGroupEgress:
+        - IpProtocol: "-1"
+          CidrIp: "0.0.0.0/0"
+      Tags:
+        - Key: Name
+          Value: "SCPrivateSecurityGroupEC2"
+
+# SG for ALB
+  SCALBSecurityGroup:
+    Type: "AWS::EC2::SecurityGroup"
+    Properties:
+      GroupName: "SCALBSecurityGroup"
+      GroupDescription: "SCALBSecurityGroup"
+      VpcId:
+        Ref: VPC
+      SecurityGroupIngress:
+        - IpProtocol: "tcp"
+          FromPort: 80
+          ToPort: 80
+          CidrIp:
+            Ref: WhitelistedIPAddress
+      SecurityGroupEgress:
+        - IpProtocol: "-1"
+          CidrIp: "0.0.0.0/0"
+      Tags:
+        - Key: Name
+          Value: "SCALBSecurityGroup"
+
+  SCLoadBalancerTargetGroup:
+      Type: AWS::ElasticLoadBalancingV2::TargetGroup
+      Properties:
+        HealthCheckIntervalSeconds: 30
+        HealthCheckProtocol: HTTP
+        HealthCheckTimeoutSeconds: 15
+        HealthyThresholdCount: 5
+        Matcher:
+          HttpCode: "200"
+        Name: SCLoadBalancerTargetGroup
+        Port: 80
+        Protocol: HTTP
+        TargetGroupAttributes:
+        - Key: deregistration_delay.timeout_seconds
+          Value: "20"
+        Targets:
+        - Id:
+            Ref: SCEC2Instance
+          Port: 80
+        UnhealthyThresholdCount: 3
+        VpcId:
+          Ref: "VPC"
+        Tags:
+        - Key: Name
+          Value: SCEC2Instance
+        - Key: Port
+          Value: 80    
+
+
+  SCALBListener:
+      Type: AWS::ElasticLoadBalancingV2::Listener
+      Properties:
+        DefaultActions:
+          - Type: forward
+            TargetGroupArn:
+              Ref: SCLoadBalancerTargetGroup
+        LoadBalancerArn:
+            Ref: SCALB
+        Port: 80
+        Protocol: HTTP
+
+  SCALB:
+    Type: AWS::ElasticLoadBalancingV2::LoadBalancer
+    Properties:
+      Scheme: internet-facing # or internal
+      Subnets:
+      - Ref: SCPublicSubnet1
+      - Ref: SCPublicSubnet2
+      SecurityGroups:
+      - Ref: SCALBSecurityGroup
+      Tags:
+        - Key: Name
+          Value: "SCALB"
+      
+
+  MyKeyPair:
+    Type: 'AWS::EC2::KeyPair'
+    Properties:
+      KeyName: SCKey
+      Tags:
+        - Key: Name
+          Value: "SCKey"
+
+  SCEC2Instance:
+    Type: "AWS::EC2::Instance"
+    Properties:
+      ImageId: "ami-0c0b74d29acd0cd97"
+      InstanceType: "t2.micro"
+      KeyName: "SCKey"
+      SecurityGroupIds:
+        - Ref: SCPrivateSecurityGroup
+      SubnetId: 
+        Ref: SCPrivateSubnet1
+      UserData:
+        Fn::Base64: |
+          #!/bin/bash
+
+          # Install necessary packages
+          sudo yum update -y
+          sudo yum install -y python3 python3-pip httpd
+          # Restart the web server
+          systemctl start httpd
+          systemctl enable httpd
+
+          # Install required Python libraries
+          sudo pip3 install requests beautifulsoup4 urllib3==1.26.6
+
+          # Your Python script here
+          cat <<EOF > /tmp/worldbank_script.py
+          import requests
+          from bs4 import BeautifulSoup
+
+          # Send a GET request to the World Bank API endpoint
+          url = "https://api.worldbank.org/v2/region?format=json"
+          response = requests.get(url)
+
+          # Check if the request was successful (status code 200)
+          if response.status_code == 200:
+              # Parse the JSON response
+              regions_data = response.json()
+
+              # Extract the relevant information (name and iso2code) for each region
+              regions = [(region['iso2code'], region['name']) for region in regions_data[1]]
+
+              # Sort the regions alphabetically by iso2code
+              sorted_regions = sorted(regions, key=lambda x: x[0])
+
+              # Display the first 5 entries in the sorted list
+              for iso2code, name in sorted_regions[:5]:
+                  print(f"{iso2code}: {name}")
+
+              # Save the output as an HTML file
+              with open("index.html", "w") as html_file:
+                  # Create a simple HTML document with the sorted regions
+                  html_content = "<html><body><ul>"
+                  for iso2code, name in sorted_regions[:5]:
+                      html_content += f"<li>{iso2code}: {name}</li>"
+                  html_content += "</ul></body></html>"
+
+                  # Write the HTML content to the file
+                  html_file.write(html_content)
+
+              print("Output saved as index.html")
+          else:
+              # Print an error message if the request was not successful
+              print(f"Error: Unable to retrieve data (status code: {response.status_code})")
+          EOF
+
+          # Run the Python script
+          python3 /tmp/worldbank_script.py
+          cp index.html /var/www/html/index.html
+      Tags:
+        - Key: Name
+          Value: "SCEC2Instance"
+Outputs:
+  LoadBalancerDNS:
+    Description: "DNS name of the load balancer"
+    Value: !GetAtt SCALB.DNSName
+  PrivateIPAddress:
+    Description: "Private IP address of the EC2 instance"
+    Value: !GetAtt SCEC2Instance.PrivateIp
